@@ -1,6 +1,6 @@
 use std::ops::{Add, AddAssign, Div, Mul};
 
-fn gcd(a: i32, b: i32) -> i32 {
+fn gcd(a: u32, b: u32) -> u32 {
     if b == 0 {
         return a;
     } else {
@@ -8,17 +8,19 @@ fn gcd(a: i32, b: i32) -> i32 {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
+#[derive(Debug, Clone, Copy, Hash)]
 pub struct Number {
-    numerator: i32,
-    denominator: i32,
+    pub numerator: u32,
+    pub denominator: u32,
+    positive: bool,
 }
 
 impl Number {
-    pub fn new(numerator: i32, denominator: i32) -> Self {
+    pub fn new(numerator: u32, denominator: u32, sign: bool) -> Self {
         let mut out = Self {
             numerator,
             denominator,
+            positive: sign,
         };
         out.simplify();
         out
@@ -37,8 +39,8 @@ impl Number {
     pub fn factors(&self) -> Vec<i32> {
         (1..=self.numerator / 2)
             .filter(|x| self.numerator % x == 0)
-            .flat_map(|x| [x, -x])
-            .chain([self.numerator, -self.numerator])
+            .flat_map(|x| [x as i32, -(x as i32)])
+            .chain([self.numerator as i32, -(self.numerator as i32)])
             .collect()
     }
 
@@ -53,17 +55,23 @@ impl Number {
             numerator *= self.numerator;
             denominator *= self.denominator
         }
-        Number::new(numerator, denominator)
+        Number::new(
+            numerator,
+            denominator,
+            if degree % 2 == 0 { true } else { self.positive },
+        )
     }
 }
 
 impl Add<Number> for Number {
     type Output = Number;
     fn add(self, rhs: Number) -> Self::Output {
-        Number {
-            numerator: (self.numerator * rhs.denominator) + (rhs.numerator * self.denominator),
-            denominator: rhs.denominator * self.denominator,
-        }
+        let lhs_factor = if self.positive { 1 } else { -1 };
+        let rhs_factor = if rhs.positive { 1 } else { -1 };
+        let numerator = ((self.numerator * rhs.denominator) as i32 * lhs_factor)
+            + ((rhs.numerator * self.denominator) as i32 * rhs_factor);
+        let denom = self.denominator * rhs.denominator;
+        Number::new(numerator.abs() as u32, denom, numerator.is_positive())
     }
 }
 
@@ -76,10 +84,12 @@ impl Add<f64> for Number {
 
 impl AddAssign for Number {
     fn add_assign(&mut self, rhs: Self) {
-        let number = Number {
-            numerator: (self.numerator * rhs.denominator) + (rhs.numerator * self.denominator),
-            denominator: rhs.denominator * self.denominator,
-        };
+        let lhs_factor = if self.positive { 1 } else { -1 };
+        let rhs_factor = if rhs.positive { 1 } else { -1 };
+        let numerator = ((self.numerator * rhs.denominator) as i32 * lhs_factor)
+            + ((rhs.numerator * self.denominator) as i32 * rhs_factor);
+        let denom = self.denominator * rhs.denominator;
+        let number = Number::new(numerator.abs() as u32, denom, numerator.is_positive());
         *self = number;
     }
 }
@@ -92,6 +102,14 @@ impl Mul<f64> for Number {
     }
 }
 
+impl Mul<u32> for Number {
+    type Output = Number;
+
+    fn mul(self, rhs: u32) -> Self::Output {
+        Self::new(self.numerator * rhs, self.denominator, self.positive)
+    }
+}
+
 impl Div<f64> for Number {
     type Output = f64;
 
@@ -100,13 +118,26 @@ impl Div<f64> for Number {
     }
 }
 
+impl Div<u32> for Number {
+    type Output = Number;
+
+    fn div(self, rhs: u32) -> Self::Output {
+        Self::new(self.numerator, self.denominator * rhs, self.positive)
+    }
+}
+
 impl Mul<Number> for Number {
     type Output = Number;
 
     fn mul(self, rhs: Number) -> Self::Output {
+        let sign = match self.positive {
+            true => rhs.positive,
+            false => !rhs.positive,
+        };
         Self::new(
             self.numerator * rhs.numerator,
             self.denominator * rhs.denominator,
+            sign,
         )
     }
 }
@@ -118,9 +149,18 @@ impl Div<Number> for Number {
         Self::new(
             self.numerator * rhs.denominator,
             self.denominator * rhs.numerator,
+            self.positive ^ rhs.positive,
         )
     }
 }
+
+impl PartialEq for Number {
+    fn eq(&self, other: &Self) -> bool {
+        self.numerator * other.denominator == other.numerator * self.denominator
+    }
+}
+
+impl Eq for Number {}
 
 impl PartialOrd for Number {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
@@ -134,12 +174,9 @@ impl Ord for Number {
     }
 }
 
-impl From<i32> for Number {
-    fn from(value: i32) -> Self {
-        Self {
-            numerator: value,
-            denominator: 1,
-        }
+impl From<u32> for Number {
+    fn from(value: u32) -> Self {
+        Self::new(value, 1, true)
     }
 }
 
@@ -162,10 +199,11 @@ impl From<f64> for Number {
             new_numerator = value * 10_f64.powi(i);
         }
 
-        Self {
-            numerator: new_numerator.floor() as i32,
-            denominator: (10 as i32).pow(i as u32),
-        }
+        Self::new(
+            new_numerator.floor().abs() as u32,
+            (10 as u32).pow(i as u32),
+            value.is_sign_positive(),
+        )
     }
 }
 
@@ -174,18 +212,43 @@ mod tests {
     use super::*;
     #[test]
     fn test_simplify() {
-        assert_eq!(Number::new(9, 3), Number::new(3, 1));
-        assert_eq!(Number::new(8, 16), Number::new(1, 2));
-        assert_eq!(Number::new(153, 3), Number::new(51, 1));
+        assert_eq!(Number::new(9, 3, true), Number::new(3, 1, true));
+        assert_eq!(Number::new(8, 16, true), Number::new(1, 2, true));
+        assert_eq!(Number::new(153, 3, true), Number::new(51, 1, true));
     }
 
     #[test]
     fn test_division() {}
 
     #[test]
+    fn test_multiplication() {
+        assert_eq!(Number::new(4, 1, true) * 4, Number::new(16, 1, true));
+        assert_eq!(
+            Number::new(4, 1, true) * Number::new(4, 1, true),
+            Number::new(16, 1, true)
+        );
+        assert_eq!(
+            Number::new(4, 1, false) * Number::new(4, 1, true),
+            Number::new(16, 1, false)
+        );
+        assert_eq!(
+            Number::new(4, 1, true) * Number::new(4, 1, false),
+            Number::new(16, 1, false)
+        );
+        assert_eq!(
+            Number::new(4, 2, true) * Number::new(3, 2, false),
+            Number::new(3, 1, false)
+        );
+        assert_eq!(
+            Number::new(2, 1, true) * Number::new(225, 1, true),
+            Number::new(450, 1, true)
+        );
+    }
+
+    #[test]
     fn test_pow() {
-        assert_eq!(Number::new(4, 1).pow(2), Number::new(16, 1));
-        assert_eq!(Number::new(1, 1).pow(2), Number::new(1, 1));
-        assert_eq!(Number::new(-4, 3).pow(3), Number::new(-64, 27));
+        assert_eq!(Number::new(4, 1, true).pow(2), Number::new(16, 1, true));
+        assert_eq!(Number::new(1, 1, true).pow(2), Number::new(1, 1, true));
+        assert_eq!(Number::new(4, 3, false).pow(3), Number::new(64, 27, false));
     }
 }

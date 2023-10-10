@@ -19,7 +19,10 @@ impl Term {
     }
 
     fn evaluate(&self, x: Number) -> Number {
-        self.coefficient * (x.pow(self.degree))
+        let t = x.pow(self.degree);
+        let out = t * self.coefficient;
+
+        out
     }
 }
 
@@ -95,21 +98,32 @@ impl PolynomialFunction {
                 }
             })
             .unwrap_or(1.into());
-        if !constant_term.is_integer() || !leading_coefficient.is_integer() {
-            return unimplemented!();
+        let mut divisor = 1;
+        for num in self.terms.iter().map(|x| x.coefficient) {
+            if !num.is_integer() {
+                divisor *= num.denominator;
+            }
         }
 
-        let lc_factors = leading_coefficient.factors();
+        println!("divisor: {:?}", divisor);
 
-        println!("{lc_factors:?}");
+        let lc_factors = (leading_coefficient * divisor).factors();
 
-        let potential_roots = constant_term
+        let potential_roots = (constant_term * divisor)
             .factors()
             .into_iter()
-            .flat_map(|c| lc_factors.iter().map(move |l| Number::new(c, *l)));
+            .flat_map(|c| {
+                lc_factors.iter().map(move |l| {
+                    Number::new(
+                        c.abs() as u32,
+                        l.abs() as u32,
+                        c.is_positive() == l.is_positive(),
+                    )
+                })
+            });
 
         for x in potential_roots {
-            if self._evaluate(x) == 0.into() {
+            if self._evaluate(x).numerator == 0 {
                 roots.insert(x);
             }
         }
@@ -129,13 +143,13 @@ mod tests {
     #[test]
     fn simplify() {
         let terms = vec![
-            Term::new(Number::new(5, 1), 0),
-            Term::new(Number::new(10, 1), 0),
-            Term::new(Number::new(4, 2), 1),
-            Term::new(Number::new(4, 1), 1),
-            Term::new(Number::new(4, 2), 2),
-            Term::new(Number::new(4, 2), 3),
-            Term::new(Number::new(-4, 2), 3),
+            Term::new(Number::new(5, 1, true), 0),
+            Term::new(Number::new(10, 1, true), 0),
+            Term::new(Number::new(4, 2, true), 1),
+            Term::new(Number::new(4, 1, true), 1),
+            Term::new(Number::new(4, 2, true), 2),
+            Term::new(Number::new(4, 2, true), 3),
+            Term::new(Number::new(4, 2, false), 3),
         ];
 
         let func = PolynomialFunction::new(terms);
@@ -143,9 +157,9 @@ mod tests {
         assert_eq!(
             func.terms,
             vec![
-                Term::new(Number::new(2, 1), 2),
-                Term::new(Number::new(6, 1), 1),
-                Term::new(Number::new(15, 1), 0),
+                Term::new(Number::new(2, 1, true), 2),
+                Term::new(Number::new(6, 1, true), 1),
+                Term::new(Number::new(15, 1, true), 0),
             ]
         );
     }
@@ -153,9 +167,9 @@ mod tests {
     #[test]
     fn evaluate() {
         let terms = vec![
-            Term::new(Number::new(15, 1), 0),
-            Term::new(Number::new(6, 1), 1),
-            Term::new(Number::new(2, 1), 2),
+            Term::new(Number::new(15, 1, true), 0),
+            Term::new(Number::new(6, 1, true), 1),
+            Term::new(Number::new(2, 1, true), 2),
         ];
 
         let func = PolynomialFunction::new(terms);
@@ -166,15 +180,40 @@ mod tests {
     #[test]
     fn find_roots() {
         let terms = vec![
-            Term::new(Number::new(1, 1), 2),
-            Term::new(Number::new(-5, 1), 1),
-            Term::new(Number::new(6, 1), 0),
+            Term::new(Number::new(1, 1, true), 2),
+            Term::new(Number::new(5, 1, false), 1),
+            Term::new(Number::new(6, 1, true), 0),
         ];
 
         let func = PolynomialFunction::new(terms);
         let mut roots = func.roots();
         roots.sort();
 
-        assert_eq!(roots, vec![Number::new(2, 1), Number::new(3, 1)])
+        assert_eq!(
+            roots,
+            vec![Number::new(2, 1, true), Number::new(3, 1, true)]
+        )
+    }
+
+    #[test]
+    fn find_roots_fractional() {
+        let terms = vec![
+            Term::new(Number::new(1, 1, true), 3),
+            Term::new(Number::new(9, 2, false), 2),
+            Term::new(Number::new(7, 2, true), 1),
+            Term::new(Number::new(3, 1, true), 0),
+        ];
+
+        let func = PolynomialFunction::new(terms);
+        let mut roots = func.roots();
+        roots.sort();
+        assert_eq!(
+            roots,
+            vec![
+                Number::new(1, 2, false),
+                Number::new(2, 1, true),
+                Number::new(3, 1, true)
+            ]
+        )
     }
 }
