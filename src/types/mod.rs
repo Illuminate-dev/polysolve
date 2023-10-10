@@ -21,7 +21,6 @@ impl Term {
     fn evaluate(&self, x: Number) -> Number {
         let t = x.pow(self.degree);
         let out = t * self.coefficient;
-
         out
     }
 }
@@ -104,8 +103,6 @@ impl PolynomialFunction {
                 divisor *= num.denominator;
             }
         }
-
-        println!("divisor: {:?}", divisor);
 
         let lc_factors = (leading_coefficient * divisor).factors();
 
@@ -204,6 +201,27 @@ mod tests {
             Term::new(Number::new(3, 1, true), 0),
         ];
 
+        let func = PolynomialFunction::new(terms);
+        let mut roots = func.roots();
+        roots.sort();
+        assert_eq!(
+            roots,
+            vec![
+                Number::new(1, 2, false),
+                Number::new(2, 1, true),
+                Number::new(3, 1, true)
+            ]
+        )
+    }
+
+    #[test]
+    fn find_roots_irrational() {
+        let terms = vec![
+            Term::new(Number::new(1, 3, true), 3),
+            Term::new(Number::new(1, 9, true), 2),
+            Term::new(Number::new(1, 2, false), 1),
+            Term::new(Number::new(4, 7, true), 0),
+        ];
         let func = PolynomialFunction::new(terms);
         let mut roots = func.roots();
         roots.sort();
